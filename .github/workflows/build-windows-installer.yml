@@ -1,0 +1,70 @@
+name: Build BCI Windows installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/0.3.0-alpha
+    paths:
+      - 'builder-payload/**'
+      - '.github/workflows/build-windows-installer.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Windows x64 build and installer
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12 x64
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+
+      - name: Reconstruct and verify source archive
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem -Path 'builder-payload' -Filter 'part-*.b64' | Sort-Object Name
+          if ($parts.Count -ne 8) {
+            throw "Expected 8 Base64 archive parts, found $($parts.Count)."
+          }
+          $encoded = ($parts | ForEach-Object { (Get-Content -Raw $_.FullName).Trim() }) -join ''
+          $bytes = [Convert]::FromBase64String($encoded)
+          $archive = 'BCI_MVP_0.3.0-alpha_Windows_Builder.zip'
+          [IO.File]::WriteAllBytes($archive, $bytes)
+          $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          $expected = '5eedfc19a607114e7f5fbe3132fc62691440e4451edca5664038a695eba92d04'
+          if ($actual -ne $expected) {
+            throw "Source archive checksum mismatch. Expected $expected, got $actual."
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath 'workspace' -Force
+          if (!(Test-Path 'workspace/BCI_MVP/bci_app.py')) {
+            throw 'The reconstructed archive does not contain the BCI application.'
+          }
+
+      - name: Install Python dependencies and run tests
+        shell: pwsh
+        working-directory: workspace/BCI_MVP
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-windows.txt
+          python -m py_compile bci_app.py bci_core.py bci_environment.py bci_store.py bci_ml.py
+          python -m unittest discover -s tests -v
+
+      - name: Build the single-file Windows installer
+        shell: cmd
+        working-directory: workspace/BCI_MVP
+        run: build_windows_installer.bat
+
+      - name: Publish installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BCI-Windows-Installer
+          path: workspace/BCI_MVP/dist/BCI_Setup_0.3.0-alpha_x64.exe
+          if-no-files-found: error
+          retention-days: 30
