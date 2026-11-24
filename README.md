@@ -1,72 +1,71 @@
 # Bannerlord Compatibility Intelligence (BCI)
 
-**A local-first project for analyzing mod compatibility in Mount & Blade II: Bannerlord.**
+**A local-first analyzer for Mount & Blade II: Bannerlord mod setups.**
 
-[English](README.md) · [Русская версия](README_RU.md)
-
+[English](README.md) · [Русская версия](README_RU.md)  
 [Development roadmap](ROADMAP.md) · [Дорожная карта](ROADMAP_RU.md)
 
-BCI is being developed to help players understand how Bannerlord mods may interact, identify potential compatibility risks, and investigate issues using technical evidence and controlled in-game tests.
+BCI inventories Bannerlord modules and statically analyzes selected interactions between their files and data. Its purpose is to help players investigate compatibility risks using traceable evidence—not to label every overlap as a conflict or promise a crash-free game.
 
-The long-term goal is to move beyond simple file-overlap warnings toward evidence-based diagnostics: explain what may be affected, show why a combination is suspicious, and help users evaluate possible ways to resolve problems.
+## Current status — 0.3.1-alpha
 
-## Project status
+BCI remains an alpha Windows prototype. This checkpoint consolidates real-installation QA and two targeted analyzer improvements:
+- an indexed approach to XML comparisons, comparing only modules that share an XML object;
+- a resource-size prefilter: files with different sizes are known to differ, while equal-sized files still require SHA-256.
 
-**Current stage: 0.3.0-alpha — analyzer QA and validation.**
+The source-builder package `BCI_MVP_0.3.1-alpha_Source.zip` is attached separately with this project handoff. **It has not yet been published as a GitHub binary asset.** It is a builder/source archive, not a signed stable installer. Installation, update, and uninstall on a clean machine still require release validation.
 
-The current Windows x64 prototype launches locally and is undergoing functional testing. Its existing scope includes early module and load-order checks, XML analysis, local HTML/JSON reports, a local SQLite report store, and components for recording test outcomes and experimenting with model training.
+## Latest real-installation QA — 24 November 2026
 
-This is an early development build, not a stable release. The accuracy and coverage of the analyzer are still being evaluated against real Bannerlord mod setups. The Windows installer workflow has not yet produced a verified release package, and there are currently no stable downloads published on GitHub.
+Three consecutive runs were performed on one Windows 11 Bannerlord installation:
 
-See the [0.3.0-alpha development branch](https://github.com/VoodyWoodman/BCI/tree/release/0.3.0-alpha) and [GitHub Actions build history](https://github.com/VoodyWoodman/BCI/actions).
+| Metric | Result |
+|---|---:|
+| Active / discovered modules | 12 / 12 |
+| Findings | 21 in every report |
+| XML records | 185,664 |
+| Files discovered | 14,230 |
+| Files hashed during inventory | 5,350 (253.7 MB) |
+| Analyzer core (`scan_modules`) | 7.51 / 7.58 / 7.58 s |
+| Mean analyzer-core time | 7.56 s |
 
-## Product principles
+The resource check examined 16 duplicate relative paths: 14 paths had different file sizes (28 files safely skipped SHA-256 because unequal sizes prove unequal byte content); four equal-sized files were hashed (about 0.3 MB). Equal-sized files are still compared by SHA-256.
 
-- **Evidence over guesses.** Findings should point to concrete files, data, rules, logs, or reproducible tests.
-- **Overlap is not automatically a conflict.** Two mods touching the same file, XML node, or method do not necessarily break each other.
-- **Clear uncertainty.** Confirmed defects, potential risks, harmless overrides, and unknown cases must be distinguished.
-- **Local-first.** The intended default is local analysis and local data storage, without mandatory cloud services.
-- **Human decisions stay with the user.** Recommendations should explain trade-offs rather than silently changing a mod setup.
-- **No impossible promises.** BCI aims to reduce compatibility problems; it cannot guarantee a crash-free game.
+**Measurement boundary:** the `scan_modules` timer excludes Baseline comparison, ML inference, SQLite persistence, and HTML/JSON export. The 7.56-second mean is not an end-to-end timing. These results represent one 12-module setup, not a performance guarantee for 50–100 mods.
 
-## Roadmap
+The three reports contained no real third-party XML comparison workload: zero third-party XML records and zero shared-object comparisons. The XML-index improvement is covered by synthetic/differential tests, but has not yet been exercised against real third-party XML overlaps in this user's setup.
 
-The roadmap is published in both languages:
+## Performance policy
 
-- [Development roadmap — English](ROADMAP.md)
-- [Дорожная карта — русский](ROADMAP_RU.md)
+The recent performance work is now a checkpoint, not an ongoing race for lower timings. Further optimization is paused. BCI must not sacrifice analyzer coverage, correctness, evidence quality, or regression protection for speed. Resume performance work only when real larger mod collections show an unacceptable delay and profiling identifies a concrete bottleneck. Any future optimization must preserve findings and pass regression tests.
 
-Version numbers in the roadmap are planning milestones, not release-date commitments. Each stage depends on the results and quality gates of the previous one.
+## What the alpha currently includes
 
-## Planned capabilities
+- Bannerlord module discovery and metadata/load-order checks;
+- XML attribute-level analysis and use of XSD keys where available;
+- XSLT inventory (the analyzer does not execute the complete in-game XSLT pipeline);
+- resource-path collision checks with size prefiltering and SHA-256 for equal-sized files;
+- HTML/JSON reports with evidence and performance counters;
+- local SQLite report storage;
+- manual test-outcome labels and an experimental local LightGBM workflow in shadow mode.
 
-As the analyzer matures, the project may expand into:
+The ML workflow does not identify a guilty mod or provide a validated probability of failure. No pre-trained classifier based on a representative real Bannerlord gameplay dataset is included.
 
-- deeper XML and data-reference analysis;
-- XSLT, asset, DLL/API, and Harmony patch inspection;
-- structured compatibility evidence and controlled A/B/A test records;
-- ML-assisted risk assessment, introduced only after validation and initially used in shadow mode;
-- analysis of interactions between pairs and groups of mods;
-- clear Simple and Advanced presentation modes;
-- a separate generated compatibility module through **BCI Compatibility Forge**, while keeping original mods untouched;
-- optional local AI assistance for explaining complex findings.
+## Known limitations
 
-These are development directions, not claims that the features are already implemented.
+- The analyzer does not reproduce the full Bannerlord XML merge engine.
+- XSLT is inventoried but not executed as the game's complete transformation pipeline.
+- DLL/IL analysis, Harmony patch interactions, runtime exceptions, crash dumps, save compatibility, and deep War Sails checks are not yet implemented.
+- A resource override or XML overlap is not proof of a crash.
+- Real 50- and 100-mod collections have not yet been validated.
+- Clean-machine installation/upgrade/uninstall release checks are still pending.
 
-## Current limitations
+## Next priority
 
-- BCI is in alpha and its findings require verification.
-- A warning is not proof that a mod combination is broken.
-- There is no validated classifier trained on a sufficiently representative set of real Bannerlord gameplay outcomes yet.
-- ML predictions must not be treated as confirmed causes.
-- Compatibility Forge and the local language-model assistant are long-term ideas, not current alpha features.
+The next phase focuses on analyzer quality: validate BEM/Launcher active-module detection, inspect real findings, test real third-party XML overlaps, measure false positives and missed cases, and expand reproducible regression examples. Performance work remains paused unless real workloads show a problem.
 
-## Development
-
-The immediate priority is to validate the existing analyzer on real mod installations, document false positives and missed issues, and fix defects before expanding the analysis scope.
-
-For the planned sequence of work and validation gates, see the [roadmap](ROADMAP.md).
+See the [roadmap](ROADMAP.md) for planned stages. Version milestones are planning targets, not delivery-date promises.
 
 ---
 
-*Bannerlord Compatibility Intelligence is an independent community project and is not affiliated with or endorsed by TaleWorlds Entertainment.*
+*BCI is an independent community project and is not affiliated with or endorsed by TaleWorlds Entertainment.*
