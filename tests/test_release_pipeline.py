@@ -49,6 +49,8 @@ class ReleasePipelineTests(unittest.TestCase):
         self.assertIn("Введите YES", script)
         self.assertIn("FIRST_WINDOWS_BUILD_RU.md", script)
         self.assertIn("publish_source_branch.bat", script)
+        self.assertIn("GitHub display name", script)
+        self.assertIn("Enter a valid email address", script)
 
     def test_source_sync_script_uses_new_branch_and_requires_confirmation(self):
         script = (ROOT / "publish_source_branch.ps1").read_text(encoding="utf-8-sig")

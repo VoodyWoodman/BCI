@@ -1,3 +1,13 @@
+## Первый запуск Windows GitHub Actions (25.11.2026)
+
+- Commit: `b82dac3abd2adb995b1deeec444648bcc2cb0a1b`; workflow run `45585154545`.
+- Windows runner успешно установил Python 3.12.10 x64, `requirements-windows.txt` и `requirements-test.txt`.
+- `pytest`: **117 passed, 2 failed**. Ошибка 1: XML source path в JSON evidence содержал Windows-разделители, тогда как тест ожидал платформенно-независимый путь. Ошибка 2: тест имитации ошибки чтения сравнивал пути напрямую и не срабатывал на Windows.
+- Из-за падения pytest шаги `unittest`, PyInstaller, Inno Setup и upload artifact были пропущены. Установщик и Actions Artifact не созданы.
+- В текущем исправлении XML source path переведён на `.as_posix()`. Тест ошибочного чтения использует `_normalized_file_path()` и явно проверяет, что инъекция ошибки была вызвана. В publisher добавлена проверка формата Git author name/email.
+- Локальная проверка исправленной рабочей копии (Linux x64, Python 3.13.5): `python -m pytest -q` — **119 passed**; `python -m unittest discover -s tests -p 'test*.py' -q` — **81 OK**; `python -m compileall -q .` — успешно.
+- Повторный Windows CI запуск после публикации этих изменений ещё не выполнен. Windows PowerShell 5.1 parser и Windows path behavior не проверялись локально; решающая проверка — новый GitHub Actions run.
+
 ## Исправление первой публикации Windows CI (25.11.2026)
 
 - `publish_source_branch.ps1` проверен на наличие UTF-8 BOM (`EF BB BF`), чтобы Windows PowerShell 5.1 не интерпретировал русские строки как ANSI. Полный запуск PowerShell parser в Linux-среде недоступен и не заявляется.

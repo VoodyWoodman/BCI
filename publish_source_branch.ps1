@@ -83,14 +83,18 @@ try {
     $GitAuthorName = git -C $ClonePath config user.name
     $GitAuthorEmail = git -C $ClonePath config user.email
     if ([string]::IsNullOrWhiteSpace($GitAuthorName)) {
-        $GitAuthorName = Read-Host 'Git commit author name (will be stored only in the temporary clone)'
-        if ([string]::IsNullOrWhiteSpace($GitAuthorName)) { throw 'Git commit author name is required.' }
+        $GitAuthorName = Read-Host 'Git commit author name (for example, your GitHub display name; stored only in the temporary clone)'
+        if ([string]::IsNullOrWhiteSpace($GitAuthorName) -or $GitAuthorName.Trim().Length -lt 2) {
+            throw 'Enter a recognizable Git author name (at least 2 characters).'
+        }
         git -C $ClonePath config user.name $GitAuthorName
         if ($LASTEXITCODE -ne 0) { throw 'Could not set the local Git author name.' }
     }
     if ([string]::IsNullOrWhiteSpace($GitAuthorEmail)) {
-        $GitAuthorEmail = Read-Host 'Git commit author email (GitHub noreply email is acceptable)'
-        if ([string]::IsNullOrWhiteSpace($GitAuthorEmail)) { throw 'Git commit author email is required.' }
+        $GitAuthorEmail = Read-Host 'Git commit author email (verified GitHub email or username@users.noreply.github.com)'
+        if ($GitAuthorEmail -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') {
+            throw 'Enter a valid email address; a GitHub noreply address is acceptable.'
+        }
         git -C $ClonePath config user.email $GitAuthorEmail
         if ($LASTEXITCODE -ne 0) { throw 'Could not set the local Git author email.' }
     }

@@ -987,15 +987,19 @@ class CoreTests(unittest.TestCase):
             ]}), encoding="utf-8")
 
             original_hash = bci_core.sha256_file
+            target_resource = bci_core._normalized_file_path(addon_resource)
+            failed_resource_reads = []
 
             def fail_addon_resource(path, chunk_size=1024 * 1024):
-                if Path(path) == addon_resource:
+                if bci_core._normalized_file_path(Path(path)) == target_resource:
+                    failed_resource_reads.append(str(path))
                     raise OSError("simulated unreadable resource")
                 return original_hash(path, chunk_size)
 
             with patch("bci_core.sha256_file", side_effect=fail_addon_resource):
                 report = scan_modules(root, bem)
 
+            self.assertEqual(len(failed_resource_reads), 1)
             finding = next(f for f in report["findings"] if f["category"] == "Resource Override")
             self.assertFalse(finding["evidence"]["content_differs"])
             self.assertFalse(finding["evidence"]["comparison_complete"])

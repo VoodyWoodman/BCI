@@ -645,7 +645,7 @@ def _extract_records(
         return records, errors
     paths = xml_paths if xml_paths is not None else sorted(module_data.rglob("*.xml"))
     for path in paths:
-        source_path = str(path.relative_to(module_dir))
+        source_path = path.relative_to(module_dir).as_posix()
         root, err = safe_parse(path)
         if root is None:
             errors.append(f"{source_path}: {err}")
