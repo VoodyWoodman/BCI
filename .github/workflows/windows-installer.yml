@@ -1,0 +1,149 @@
+name: BCI Windows build and GitHub Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - build/bci-update-system
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bci-windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12 x64
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+          cache: pip
+          cache-dependency-path: requirements-windows.txt
+
+      - name: Resolve release version
+        id: meta
+        shell: pwsh
+        run: |
+          $source = Select-String -Path 'bci_core.py' -Pattern '^APP_VERSION\s*=\s*"([^"]+)"' | Select-Object -First 1
+          if ($null -eq $source) { throw 'APP_VERSION was not found in bci_core.py.' }
+          $sourceVersion = [regex]::Match($source.Line, '"([^"]+)"').Groups[1].Value
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $tagVersion = $env:GITHUB_REF_NAME.TrimStart('v')
+            if ($tagVersion -ne $sourceVersion) {
+              throw "Tag version $tagVersion does not match app source version $sourceVersion."
+            }
+            $version = $tagVersion
+          } else {
+            $version = $sourceVersion
+          }
+          $channel = if ($version.Contains('-')) { 'preview' } else { 'stable' }
+          "BCI_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "BCI_CHANNEL=$channel" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Building BCI $version ($channel)"
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install application and build dependencies
+        run: python -m pip install -r requirements-windows.txt
+
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-test.txt
+
+      - name: Run pytest suite
+        run: python -m pytest -q
+
+      - name: Run unittest suite
+        run: python -m unittest discover -s tests -p "test*.py" -v
+
+      - name: Build portable application folder
+        run: >-
+          python -m PyInstaller --noconfirm --clean --windowed --onedir
+          --name BCI --distpath dist --workpath build
+          --collect-all lightgbm --collect-binaries lightgbm
+          --collect-all numpy --collect-all scipy bci_app.py
+
+      - name: Collect third-party license notices
+        run: python copy_third_party_licenses.py dist/BCI/_licenses
+
+      - name: Add portable instructions
+        shell: pwsh
+        run: |
+          @'
+          Bannerlord Compatibility Intelligence - Portable build
+
+          Run BCI.exe from this folder. Keep the _internal folder beside BCI.exe.
+          This portable folder can be moved as a whole; do not move BCI.exe alone.
+          User reports, profiles, database and update settings are stored in %LOCALAPPDATA%\BCI.
+          Automatic updates are designed for the installed version. Portable users should download a new portable ZIP from GitHub Releases.
+          '@ | Set-Content -Path 'dist/BCI/README_PORTABLE.txt' -Encoding utf8
+
+      - name: Download Microsoft Visual C++ Redistributable
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force redist | Out-Null
+          Invoke-WebRequest -Uri 'https://aka.ms/vc14/vc_redist.x64.exe' -OutFile 'redist/vc_redist.x64.exe'
+          if (!(Test-Path 'redist/vc_redist.x64.exe')) { throw 'VC++ Redistributable download failed.' }
+
+      - name: Install Inno Setup 6
+        run: choco install innosetup --version=6.7.1 --yes --no-progress
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (!(Test-Path $iscc)) { throw 'Inno Setup 6 compiler was not found.' }
+          & $iscc "/DMyAppVersion=$env:BCI_VERSION" /Qp BCI_Setup.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE." }
+          $installer = "dist/BCI_Setup_$env:BCI_VERSION`_x64.exe"
+          if (!(Test-Path $installer)) { throw "Expected installer was not created: $installer" }
+
+      - name: Package portable ZIP and release metadata
+        shell: pwsh
+        run: |
+          $portable = "dist/BCI_Portable_$env:BCI_VERSION.zip"
+          Compress-Archive -Path 'dist/BCI' -DestinationPath $portable -CompressionLevel Optimal
+          $installer = "dist/BCI_Setup_$env:BCI_VERSION`_x64.exe"
+          python create_release_manifest.py --version "$env:BCI_VERSION" --installer $installer --portable $portable --output-dir dist
+          if (!(Test-Path 'dist/release-manifest.json')) { throw 'Release manifest was not created.' }
+          if (!(Test-Path 'dist/SHA256SUMS.txt')) { throw 'SHA256SUMS.txt was not created.' }
+
+      - name: Upload build artifact (available for branch and manual builds)
+        uses: actions/upload-artifact@v4
+        with:
+          name: BCI-Windows-${{ steps.meta.outputs.version }}
+          path: |
+            dist/BCI_Setup_*_x64.exe
+            dist/BCI_Portable_*.zip
+            dist/release-manifest.json
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 21
+
+      - name: Publish GitHub Release for version tags
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: BCI ${{ steps.meta.outputs.version }}
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ !contains(github.ref_name, '-') }}
+          files: |
+            dist/BCI_Setup_*_x64.exe
+            dist/BCI_Portable_*.zip
+            dist/release-manifest.json
+            dist/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

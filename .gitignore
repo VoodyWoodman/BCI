@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.build-venv/
+build/
+dist/
+*.spec
+*.log
+*.bci-model.zip
+BCI_Reports/
+redist/
+
+.build-venv-*/

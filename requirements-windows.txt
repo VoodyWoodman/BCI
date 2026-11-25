@@ -1,0 +1,5 @@
+# Windows x64 application runtime + build toolchain. Build with Python 3.12 (preferred) or 3.13 (fallback).
+lightgbm==4.6.0
+numpy>=2.0,<3
+scipy>=1.14,<2
+pyinstaller>=6.10,<7
